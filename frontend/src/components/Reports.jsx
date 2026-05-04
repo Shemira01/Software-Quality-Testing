@@ -1,10 +1,25 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
-function ReportsUI({ dailyData, weeklyData, alerts }) {
+function ReportsUI({ dailyData = [], weeklyData = [], alerts = [] }) {
+  const needMoreDailyPoints = dailyData.length < 2;
+  const needMoreWeeklyPoints = weeklyData.length < 2;
+
   return (
     <div className="reports-wrapper">
       <h2 className="section-title">Health Analytics & Trends</h2>
+
+      {(needMoreDailyPoints || needMoreWeeklyPoints) && (
+        <div className="trend-warning">
+          <p>
+            Trend charts become meaningful after multiple readings. Keep the mock sensor running so daily and weekly patterns appear.
+          </p>
+          <div className="trend-warning-details">
+            <p>Daily readings: {dailyData.length} {dailyData.length === 1 ? 'point' : 'points'}.</p>
+            <p>Weekly days: {weeklyData.length} {weeklyData.length === 1 ? 'day' : 'days'} recorded.</p>
+          </div>
+        </div>
+      )}
 
       <div className="charts-grid">
         {/* Daily Chart */}
@@ -64,4 +79,4 @@ function ReportsUI({ dailyData, weeklyData, alerts }) {
   );
 }
 
-export { ReportsUI as default };
+export default ReportsUI;
