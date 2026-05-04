@@ -16,6 +16,13 @@ frontend/.env
 # Specific Secret Keys
 backend/serviceAccountKey.json
 backend/key.json
+Hardware/secrets.h
+hardware/secrets.h
+
+# Local planning and progress reports
+backend/implementation_plan.md
+backend/progress_report.md
+PROGRESS_ANALYSIS_REPORT.md
 
 # --- Python (Backend) ---
 # Virtual Environments
@@ -52,3 +59,7 @@ yarn-debug.log*
 Thumbs.db
 *.swp
 *.swo
+
+# PowerShell local analysis cache
+Microsoft/Windows/PowerShell/ModuleAnalysisCache
+**/ModuleAnalysisCache
