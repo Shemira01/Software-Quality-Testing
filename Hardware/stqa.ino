@@ -1,19 +1,19 @@
+#include "secrets.h"
 #include <WiFi.h>
-#include <FirebaseESP32.h>
+#include <HTTPClient.h>
 
-// 1. WiFi & Firebase Credentials
-#define WIFI_SSID "LEE 8843"
-#define WIFI_PASSWORD "Bankaiii"
-#define DATABASE_URL "https://healthtracker-5678a-default-rtdb.europe-west1.firebasedatabase.app"
-#define DATABASE_SECRET "4fGOWNv8llLfgaTP921A1cpmNBz0Co8tsnDVEC1f"
-
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
+// 1. WiFi credentials and backend endpoint
+#define WIFI_SSID SECRET_SSID
+#define WIFI_PASSWORD SECRET_PASS
+#define BACKEND_URL "http://" SECRET_IP ":8000/api/vitals"
 
 // Initial Mock Values
 float currentTemp = 36.6;
 int currentBPM = 75;
+
+// 2. Replace this with the signed-in user's UID from Firebase Auth.
+String userUID = "jrxcww8HuJTxOK1a64PvMjlu29q1";
+int clientId = 1;
 
 void setup() {
   Serial.begin(115200);
@@ -25,16 +25,7 @@ void setup() {
     delay(300);
   }
   Serial.println("\nConnected!");
-  
-  config.database_url = DATABASE_URL;
-  config.signer.tokens.legacy_token = DATABASE_SECRET;
-  
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
 }
-
-// 1. Replace this with your actual UID from the Firebase Auth console
-String userUID = "yOcs5uJVZmNCiBod1zrHrZgZkv63"; 
 
 // Add this at the top of your code
 int simulationState = 0; 
@@ -71,17 +62,33 @@ void loop() {
       break;
   }
 
-  if (Firebase.ready()) {
-    String path = "users/" + userUID + "/vitals/";
-    Firebase.setFloat(fbdo, path + "temperature", currentTemp);
-    Firebase.setInt(fbdo, path + "heartRate", currentBPM);
-    
-    // Logic check: This should match your DashboardUI logic
-    bool alarming = (currentTemp > 37.5 || currentBPM > 100 || currentBPM < 60);
-    Firebase.setString(fbdo, path + "status", alarming ? "ALARMING" : "NATURAL");
-    
-    Serial.printf("[%d] Sent: %.1f C, %d BPM (%s)\n", 
-                  simulationState, currentTemp, currentBPM, alarming ? "ALARM" : "OK");
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(BACKEND_URL);
+    http.addHeader("Content-Type", "application/json");
+
+    String payload = "{";
+    payload += "\"client_id\":" + String(clientId) + ",";
+    payload += "\"user_uid\":\"" + userUID + "\",";
+    payload += "\"heart_rate\":" + String(currentBPM) + ",";
+    payload += "\"temperature\":" + String(currentTemp, 1);
+    payload += "}";
+
+    int responseCode = http.POST(payload);
+
+    Serial.printf("[%d] POST %s -> %d | %.1f C, %d BPM\n",
+                  simulationState, BACKEND_URL, responseCode, currentTemp, currentBPM);
+
+    if (responseCode > 0) {
+      Serial.println(http.getString());
+    } else {
+      Serial.printf("HTTP error: %s\n", http.errorToString(responseCode).c_str());
+    }
+
+    http.end();
+  } else {
+    Serial.println("Wi-Fi disconnected; reconnecting...");
+    WiFi.reconnect();
   }
   delay(2000); 
 }

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { auth, db } from '../firebaseConfig';
 import { ref, onValue } from "firebase/database";
-import { deleteUser } from "firebase/auth"; // For account deletion
+import { deleteUser, onAuthStateChanged } from "firebase/auth"; // For account deletion and auth state
 import DashboardUI from '../components/Dashboard';
-import Reports from '../components/Reports';
+import ReportsPage from './Reports';
 import '../App.css'; // Importing the CSS for styling
 
 function DashboardPage({ onLogout }) {
@@ -11,6 +11,8 @@ function DashboardPage({ onLogout }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [vitals, setVitals] = useState({ name: 'User', heartRate: 0, temp: 0 });
   const [dateTime, setDateTime] = useState(new Date());
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authStatus, setAuthStatus] = useState('loading auth...');
 
   useEffect(() => {
     const timer = setInterval(() => setDateTime(new Date()), 1000);
@@ -18,21 +20,32 @@ function DashboardPage({ onLogout }) {
   }, []);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      const userRef = ref(db, 'users/' + user.uid);
-      onValue(userRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-          setVitals({
-            name: data.fullName,
-            heartRate: data.vitals?.heartRate || 0,
-            temp: data.vitals?.temperature || 0
-          });
-        }
-      });
-    }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthStatus(user ? `signed in as UID: ${user.uid}` : 'not signed in');
+    });
+    return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    const userRef = ref(db, 'users/' + currentUser.uid);
+    const unsubscribe = onValue(userRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setVitals({
+          name: data.fullName,
+          heartRate: data.vitals?.heartRate || 0,
+          temp: data.vitals?.temperature || 0
+        });
+      }
+    });
+
+    return unsubscribe;
+  }, [currentUser]);
 
   const handleDeleteAccount = async () => {
     const confirmDelete = window.confirm("Are you REALLY sure? This will permanently DELETE your account from Firebase.");
@@ -96,7 +109,7 @@ function DashboardPage({ onLogout }) {
             dateTime={dateTime} 
           />
         ) : (
-          <Reports />
+          <ReportsPage />
         )}
       </main>
     </div>

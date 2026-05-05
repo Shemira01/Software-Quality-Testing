@@ -225,6 +225,26 @@ h2 {
   text-align: center;
 }
 
+.auth-status-banner {
+  padding: 12px 20px;
+  background: rgba(46, 204, 113, 0.12);
+  color: #2c3e50;
+  border-radius: 12px;
+  margin: 20px 20px 0;
+  font-size: 0.95rem;
+  border: 1px solid rgba(46, 204, 113, 0.25);
+}
+
+.reports-debug-banner {
+  padding: 12px 20px;
+  background: rgba(52, 152, 219, 0.1);
+  color: #2c3e50;
+  border-radius: 12px;
+  margin: 16px 20px;
+  font-size: 0.9rem;
+  border: 1px solid rgba(52, 152, 219, 0.2);
+}
+
 .sensor-value { font-size: 3rem; font-weight: bold; color: var(--secondary-blue); }
 
 /* LED Button Styling */
@@ -412,6 +432,28 @@ h2 {
   grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
   gap: 25px;
   margin-bottom: 40px;
+}
+
+.trend-warning {
+  background: #fff6dd;
+  border: 1px solid #f1d49d;
+  border-radius: 14px;
+  padding: 18px 22px;
+  margin-bottom: 24px;
+  color: #5f4b00;
+}
+
+.trend-warning p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.trend-warning-details {
+  display: flex;
+  gap: 18px;
+  margin-top: 10px;
+  color: #4d3b00;
+  font-size: 0.95rem;
 }
 
 .chart-card {

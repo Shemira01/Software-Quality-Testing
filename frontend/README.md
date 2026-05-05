@@ -1,16 +1,14 @@
-# React + Vite
+# Software-Quality-Testing
+Project that will be used in the testing of softwares
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## How to get the frontend.
+1. In VsCode open the folder where you want have the project
+2. Open the terminal then write the command: npm create vite@latest "frontend" (make sure to choose React and JavaScript)
+3. Wait for it to create the frontend folder (might take a couple of minutes)
+4. Once created, inside the src file in the frontend folder, place the components folder (should look like this src/components)
+5. Do the same for the pages (src/pages)
+6. Delete the existing App.jsx and App.css then replace them with the once in the repository.
+7. Then also include the firebaseConfig.js in the src folder (src/firebaseConfig.js)
+8. Then open the terminal and write the following commands
+9. npm install firebase
+10. npm install recharts

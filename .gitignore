@@ -1,0 +1,65 @@
+# --- Security & Credentials ---
+# Ignore all environment files and secret keys
+.env
+*.env
+backend/.env
+frontend/.env
+
+# Ignore all JSON files EXCEPT package files and configuration
+**/*.json
+!package.json
+!package-lock.json
+!composer.json
+!tsconfig.json
+!frontend/src/assets/*.json
+
+# Specific Secret Keys
+backend/serviceAccountKey.json
+backend/key.json
+Hardware/secrets.h
+hardware/secrets.h
+
+# Local planning and progress reports
+backend/implementation_plan.md
+backend/progress_report.md
+PROGRESS_ANALYSIS_REPORT.md
+
+# --- Python (Backend) ---
+# Virtual Environments
+backend/env/
+env/
+.venv/
+venv/
+ENV/
+# Python cache and compiled files
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Node.js (Frontend) ---
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
+*.local
+.eslintcache
+
+# --- Logs ---
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+
+# --- Editor & OS Specific ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# PowerShell local analysis cache
+Microsoft/Windows/PowerShell/ModuleAnalysisCache
+**/ModuleAnalysisCache
