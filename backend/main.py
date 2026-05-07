@@ -9,6 +9,13 @@ from firebase_admin import credentials, db
 
 app = FastAPI(title="Smart IoT Health Monitoring API")
 
+app.add_middleware(
++     CORSMiddleware,
++     allow_origins=["*"],  
++     allow_credentials=True,
++     allow_methods=["*"],
++     allow_headers=["*"],
++ )
 
 @app.get("/")
 async def root():
@@ -206,6 +213,77 @@ async def inject_error(payload: TestInjectErrorPayload):
 async def health_check():
     return {"status": "Backend is active"}
 
+# Admin endpoint to backend/main.py
+
+@app.get("/api/admin/all-users-status")
+async def get_all_users_status():
+    """Fetches the latest vitals and status for every user in the system."""
+    try:
+        users_ref = db.reference("users")
+        all_users_data = users_ref.get()
+        
+        if not all_users_data:
+            return []
+
+        summary = []
+        for uid, data in all_users_data.items():
+            vitals = data.get("vitals", {})
+            summary.append({
+                "uid": uid,
+                "name": data.get("profile", {}).get("name", f"Patient {uid}"), # Falls back if no profile name
+                "heartRate": vitals.get("heartRate", 0),
+                "temperature": vitals.get("temperature", 0),
+                "status": vitals.get("status", "UNKNOWN"),
+                "lastUpdate": vitals.get("timestamp", "N/A")
+            })
+        return summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Add this inside backend/main.py
+
+@app.get("/api/admin/user/{uid}")
+async def get_single_user_details(uid: str):
+    """Admin endpoint to fetch the complete history and vitals for a specific user."""
+    try:
+        user_ref = db.reference(f"users/{uid}")
+        user_data = user_ref.get()
+        
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        return user_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# Admin endpoint to backend/main.py
+
+@app.get("/api/admin/all-users-status")
+async def get_all_users_status():
+    """Fetches the latest vitals and status for every user in the system."""
+    try:
+        users_ref = db.reference("users")
+        all_users_data = users_ref.get()
+        
+        if not all_users_data:
+            return []
+
+        summary = []
+        for uid, data in all_users_data.items():
+            vitals = data.get("vitals", {})
+            summary.append({
+                "uid": uid,
+                "name": data.get("profile", {}).get("name", f"Patient {uid}"), # Falls back if no profile name
+                "heartRate": vitals.get("heartRate", 0),
+                "temperature": vitals.get("temperature", 0),
+                "status": vitals.get("status", "UNKNOWN"),
+                "lastUpdate": vitals.get("timestamp", "N/A")
+            })
+        return summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

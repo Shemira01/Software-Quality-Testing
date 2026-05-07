@@ -1,36 +1,33 @@
 import React, { useState } from 'react';
 import LoginForm from './pages/LoginForm';
 import SignupForm from './pages/SignupForm';
-import DashboardPage from './pages/Dashboard'; // Import your new Dashboard Page
+import DashboardPage from './pages/Dashboard';
+import AdminDashboard from './pages/AdminDashboard'; // Import Admin
 import './App.css'; 
 
 function App() {
-  /**
-   * View State Logic
-   * 'login'     -> Default starting point
-   * 'signup'    -> User registration
-   * 'dashboard' -> Accessed only after Firebase authentication
-   */
   const [view, setView] = useState('login'); 
 
   return (
     <div className="app-container">
+      {view === 'login' && <LoginForm onNavigate={(next) => setView(next)} />}
+      {view === 'signup' && <SignupForm onNavigate={(next) => setView(next)} />}
       
-      {/* 1. Login View (The Entry Point) */}
-      {view === 'login' && (
-        <LoginForm onNavigate={(nextView) => setView(nextView)} />
-      )}
-
-      {/* 2. Signup View */}
-      {view === 'signup' && (
-        <SignupForm onNavigate={(nextView) => setView(nextView)} />
-      )}
-
-      {/* 3. Real-time Dashboard View */}
       {view === 'dashboard' && (
-        <DashboardPage onLogout={() => setView('login')} />
+        <>
+          <div className="admin-gateway">
+            <button onClick={() => setView('admin')}>🛡️ Open Admin Panel</button>
+          </div>
+          <DashboardPage onLogout={() => setView('login')} />
+        </>
       )}
 
+      {view === 'admin' && (
+        <AdminDashboard 
+          onLogout={() => setView('login')} 
+          onBack={() => setView('dashboard')} 
+        />
+      )}
     </div>
   );
 }
