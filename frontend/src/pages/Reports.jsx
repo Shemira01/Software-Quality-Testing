@@ -1,104 +1,43 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReportsUI from '../components/Reports';
-import { auth, db } from '../firebaseConfig';
-import { ref, onValue } from "firebase/database";
-import { onAuthStateChanged } from "firebase/auth";
-import '../App.css';
 
-function ReportsPage() {
-  // Initialize with Empty Arrays for a "Clean Slate"
+function ReportsPage({ userId, userName }) {
   const [dailyData, setDailyData] = useState([]);
   const [weeklyData, setWeeklyData] = useState([]);
   const [alerts, setAlerts] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [debugInfo, setDebugInfo] = useState('waiting for auth...');
-  const historyExistsRef = useRef(false);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      if (user) {
-        setDebugInfo(`signed in as UID: ${user.uid}`);
-      } else {
-        setDebugInfo('not signed in');
-      }
-    });
-    return unsubscribeAuth;
-  }, []);
+    if (!userId) return;
 
-  useEffect(() => {
-    if (!currentUser) {
-      setDailyData([]);
-      setWeeklyData([]);
-      setAlerts([]);
-      return;
-    }
-
-    const historyRef = ref(db, `users/${currentUser.uid}/history`);
-    const vitalsRef = ref(db, `users/${currentUser.uid}/vitals`);
-
-    const historyUnsubscribe = onValue(historyRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        historyExistsRef.current = true;
-        setDailyData(data.daily || []);
-        setWeeklyData(data.weekly || []);
-        setAlerts(data.alerts || []);
-      } else {
-        historyExistsRef.current = false;
-        setDailyData([]);
-        setWeeklyData([]);
-        setAlerts([]);
-      }
-    });
-
-    const vitalsUnsubscribe = onValue(vitalsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (!historyExistsRef.current && data) {
-        const timestamp = data.timestamp ? new Date(data.timestamp) : new Date();
-        setDailyData([
-          {
-            time: timestamp.toLocaleTimeString(),
-            heartRate: data.heartRate || 0,
-            temp: data.temperature || 0
+    const fetchHistory = async () => {
+      try {
+        const response = await fetch(`http://localhost:8000/api/admin/user/${userId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.history) {
+            setDailyData(data.history.daily || []);
+            setWeeklyData(data.history.weekly || []);
+            setAlerts(data.history.alerts || []);
           }
-        ]);
-        setWeeklyData([
-          {
-            day: timestamp.toLocaleDateString(),
-            avgHR: data.heartRate || 0,
-            avgTemp: data.temperature || 0
-          }
-        ]);
-        setAlerts(data.status === 'ALERT' ? [
-          {
-            date: timestamp.toLocaleDateString(),
-            time: timestamp.toLocaleTimeString(),
-            message: 'Most recent vitals triggered an alert.'
-          }
-        ] : []);
+        }
+      } catch (err) {
+        console.error("Error fetching reports:", err);
       }
-    });
-
-    return () => {
-      historyUnsubscribe();
-      vitalsUnsubscribe();
     };
-  }, [currentUser]);
+
+    fetchHistory();
+    const interval = setInterval(fetchHistory, 5000); 
+    return () => clearInterval(interval);
+  }, [userId]);
 
   return (
     <div className="reports-page-container">
-      {!currentUser ? (
-        <div className="reports-empty-state">
-          <p>Please sign in to view your reports.</p>
-        </div>
-      ) : (
-        <ReportsUI 
-          dailyData={dailyData} 
-          weeklyData={weeklyData} 
-          alerts={alerts} 
-        />
-      )}
+      <ReportsUI 
+        name={userName}
+        dailyData={dailyData} 
+        weeklyData={weeklyData} 
+        alerts={alerts} 
+      />
     </div>
   );
 }

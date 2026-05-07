@@ -1,44 +1,46 @@
-import React from 'react';
-import LoginFormCard from '../components/LoginForm';
-import { auth } from '../firebaseConfig';
-import { signInWithEmailAndPassword } from "firebase/auth";
-import '../App.css'; // Importing the CSS for styling
+import React, { useState } from 'react';
+import { supabase } from '../supabaseClient';
 
 function LoginForm({ onNavigate }) {
-  
-  const handleLoginSubmit = async (email, password) => {
-    try {
-      // 1. Firebase Authentication Call
-      await signInWithEmailAndPassword(auth, email, password);
-      
-      // 2. Success Feedback
-      alert("Login Successful! Welcome back.");
-      onNavigate('dashboard');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-    } catch (error) {
-      // 3. SQA: Specific Error Handling
-      console.error("Login Error Code:", error.code);
-      
-      // Firebase often returns 'auth/invalid-credential' for both wrong email/pass 
-      // for security reasons (so hackers don't know which one is right).
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
-        alert("Invalid Email or Password. Please try again.");
-      } else {
-        alert("An error occurred: " + error.message);
-      }
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      alert(error.message);
+    } else {
+      onNavigate('dashboard');
     }
+    setLoading(false);
   };
 
   return (
     <div className="auth-page-wrapper">
       <div className="auth-container">
-        <h2>Health Tracker Login</h2>
-        <p>Enter your credentials to access your vitals</p>
-        
-        <LoginFormCard 
-          onSubmit={handleLoginSubmit} 
-          onGoToSignup={() => onNavigate('signup')} 
-        />
+        <h2>Welcome Back</h2>
+        <form onSubmit={handleLogin}>
+          <div className="input-group">
+            <label>Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+          <div className="input-group">
+            <label>Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+          </div>
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? "Logging in..." : "Log In"}
+          </button>
+        </form>
+        <p className="auth-link">Don't have an account? <span onClick={() => onNavigate('signup')} style={{cursor: 'pointer'}}>Sign Up</span></p>
       </div>
     </div>
   );

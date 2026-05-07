@@ -1,64 +1,57 @@
-import React from 'react';
-import SignupFormCard from '../components/SignupForm';
-import { auth, db } from '../firebaseConfig'; // Your config file
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { ref, set } from "firebase/database";
-import '../App.css'; // Importing the CSS for styling
+import React, { useState } from 'react';
+import { supabase } from '../supabaseClient';
 
 function SignupForm({ onNavigate }) {
-  
-  const handleSignupSubmit = async (formData) => {
-    try {
-      // 1. Create User in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(
-        auth, 
-        formData.email, 
-        formData.password
-      );
-      
-      const user = userCredential.user;
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
 
-      // 2. Store extra details in Realtime Database
-      // We use the unique 'uid' from Auth to link the database record
-      await set(ref(db, 'users/' + user.uid), {
-        fullName: formData.name,
-        email: formData.email,
-        phoneNumber: formData.phone,
-        joinedAt: new Date().toISOString(),
-        // Initialize sensor defaults for the Dashboard later
-        vitals: {
-          heartRate: 75,
-          temperature: 36.6,
-          status: "Normal"
-        }
-      });
+  const handleSignup = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    // 1. Create the user in Supabase Auth
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
 
-      // 3. HCI: Clear Feedback to the user
-      alert("Account is Successfully created");
-      
-      // 4. Redirect to Login as requested
+    if (error) {
+      alert(error.message);
+    } else if (data.user) {
+      // 2. Create their Profile in our custom table
+      await supabase.from('profiles').insert([
+        { id: data.user.id, name: name, role: 'patient' }
+      ]);
+      alert("Signup successful! You can now log in.");
       onNavigate('login');
-
-    } catch (error) {
-      // SQA: Handle common errors (e.g. email already exists)
-      console.error("Signup Error:", error.code);
-      if (error.code === 'auth/email-already-in-use') {
-        alert("This email is already registered. Please login.");
-      } else {
-        alert("Error: " + error.message);
-      }
     }
+    setLoading(false);
   };
 
   return (
     <div className="auth-page-wrapper">
       <div className="auth-container">
-        <h2>Create Account</h2>
-        <p>Join the health tracking community</p>
-        <SignupFormCard 
-          onSubmit={handleSignupSubmit} 
-          onGoToLogin={() => onNavigate('login')} 
-        />
+        <h2>Create an Account</h2>
+        <form onSubmit={handleSignup}>
+          <div className="input-group">
+            <label>Full Name</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} required />
+          </div>
+          <div className="input-group">
+            <label>Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+          <div className="input-group">
+            <label>Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+          </div>
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? "Signing up..." : "Sign Up"}
+          </button>
+        </form>
+        <p className="auth-link">Already have an account? <span onClick={() => onNavigate('login')} style={{cursor: 'pointer'}}>Log In</span></p>
       </div>
     </div>
   );

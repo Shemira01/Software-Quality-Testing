@@ -3,13 +3,11 @@ import ReportsUI from '../components/Reports';
 
 function AdminDashboard({ onLogout, onBack }) {
   const [patients, setPatients] = useState([]);
-  const [selectedPatient, setSelectedPatient] = useState(null); // Holds data when a patient is clicked
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
 
-  // Fetch the summary list for the table
   useEffect(() => {
     const fetchPatients = async () => {
-      if (selectedPatient) return; // Don't refresh table if looking at a report
+      if (selectedPatient) return;
       try {
         const response = await fetch('http://localhost:8000/api/admin/all-users-status');
         const data = await response.json();
@@ -22,40 +20,28 @@ function AdminDashboard({ onLogout, onBack }) {
     return () => clearInterval(timer);
   }, [selectedPatient]);
 
-  // Fetch individual logs when a patient is clicked
   const handleViewReport = async (uid, name) => {
-    setIsLoadingDetails(true);
     try {
       const response = await fetch(`http://localhost:8000/api/admin/user/${uid}`);
       const data = await response.json();
-      
-      // Merge the name and fetched data into the selected patient state
       setSelectedPatient({
-        uid,
-        name,
-        history: data.history || { daily: [], weekly: [], alerts: [] }
+        uid, name, history: data.history || { daily: [], weekly: [], alerts: [] }
       });
     } catch (err) {
-      console.error("Failed to load patient details", err);
-      alert("Failed to load patient data from database.");
+      alert("Failed to load patient data.");
     }
-    setIsLoadingDetails(false);
   };
 
-  // --- VIEW 1: INDIVIDUAL REPORT VIEW ---
   if (selectedPatient) {
     const history = selectedPatient.history;
     return (
       <div className="admin-container">
-        <nav className="admin-nav">
-          <button onClick={() => setSelectedPatient(null)} className="back-btn">
-            ← Back to Patient Roster
-          </button>
-          <h2>Viewing Logs: {selectedPatient.name}</h2>
-          <button onClick={onLogout} className="logout-btn">Logout</button>
+        <nav className="app-header" style={{marginBottom: '30px', borderRadius: '12px'}}>
+          <button onClick={() => setSelectedPatient(null)} className="back-btn-modern">← Back to Roster</button>
+          <h2 className="header-title">Viewing: {selectedPatient.name}</h2>
+          <button onClick={onLogout} className="logout-btn-modern">Logout</button>
         </nav>
         
-        {/* We reuse your amazing ReportsUI component! */}
         <ReportsUI 
           name={selectedPatient.name}
           dailyData={history.daily || []} 
@@ -66,57 +52,41 @@ function AdminDashboard({ onLogout, onBack }) {
     );
   }
 
-  // --- VIEW 2: ALL PATIENTS TABLE VIEW ---
   return (
-    <div className="admin-container">
-      <nav className="admin-nav">
-        <button onClick={onBack} className="back-btn">← Back to Home</button>
-        <h2>Health Admin Control Center</h2>
-        <button onClick={onLogout} className="logout-btn">Logout</button>
+    <div className="admin-container" style={{padding: '30px', maxWidth: '1200px', margin: '0 auto'}}>
+      <nav className="app-header" style={{marginBottom: '40px', borderRadius: '12px', padding: '15px 30px'}}>
+        <button onClick={onBack} className="back-btn-modern">← Home</button>
+        <h2 className="header-title">Admin Control Center</h2>
+        <button onClick={onLogout} className="logout-btn-modern">Logout</button>
       </nav>
 
-      {isLoadingDetails && <p className="loading-text">Loading secure patient logs...</p>}
+      <div className="modern-patient-grid">
+        {patients.map((p) => (
+          <div key={p.uid} className={`modern-patient-card ${p.status === 'ALERT' ? 'card-alert' : ''}`}>
+            <div className="card-header">
+              <h3>{p.name}</h3>
+              <span className={`status-pill ${p.status.toLowerCase()}`}>{p.status}</span>
+            </div>
+            
+            <div className="card-vitals">
+              <div className="vital-box">
+                <span className="v-label">Heart Rate</span>
+                <span className="v-value">{p.heartRate} <small>BPM</small></span>
+              </div>
+              <div className="vital-box">
+                <span className="v-label">Temperature</span>
+                <span className="v-value">{p.temperature} <small>°C</small></span>
+              </div>
+            </div>
 
-      <div className="patient-grid">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Patient Name</th>
-              <th>Status</th>
-              <th>Heart Rate</th>
-              <th>Temp</th>
-              <th>Last Sync</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {patients.map((p) => (
-              <tr key={p.uid} className={p.status === 'ALERT' ? 'row-alert' : ''}>
-                <td><strong>{p.name}</strong></td>
-                <td>
-                  <span className={`status-badge ${p.status.toLowerCase()}`}>
-                    {p.status}
-                  </span>
-                </td>
-                <td>{p.heartRate} BPM</td>
-                <td>{p.temperature}°C</td>
-                <td>{p.lastUpdate !== 'N/A' ? new Date(p.lastUpdate).toLocaleTimeString() : 'N/A'}</td>
-                <td>
-                  <button 
-                    className="view-btn" 
-                    onClick={() => handleViewReport(p.uid, p.name)}
-                    disabled={isLoadingDetails}
-                  >
-                    🔍 View Detailed Reports
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {patients.length === 0 && (
-              <tr><td colSpan="6" style={{textAlign: 'center'}}>No patient data found in Database. Run seed_db.py!</td></tr>
-            )}
-          </tbody>
-        </table>
+            <div className="card-footer">
+              <span className="sync-time">⏱ Last Sync: {p.lastUpdate !== 'N/A' ? new Date(p.lastUpdate).toLocaleTimeString() : 'N/A'}</span>
+              <button className="view-report-btn" onClick={() => handleViewReport(p.uid, p.name)}>
+                Open Reports →
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -1,289 +1,151 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Optional
 from datetime import datetime
 import os
+import time
 
-import firebase_admin
-from firebase_admin import credentials, db
+from supabase import create_client, Client
 
-app = FastAPI(title="Smart IoT Health Monitoring API")
+app = FastAPI(title="Smart IoT Health Monitoring API (Precise Alerts)")
 
 app.add_middleware(
-+     CORSMiddleware,
-+     allow_origins=["*"],  
-+     allow_credentials=True,
-+     allow_methods=["*"],
-+     allow_headers=["*"],
-+ )
-
-@app.get("/")
-async def root():
-    return {
-        "status": "Backend is running",
-        "health_check": "/api/health",
-        "vitals_endpoint": "/api/vitals",
-        "docs": "/docs",
-    }
-
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def load_dotenv(dotenv_path: str) -> None:
-    if not os.path.isfile(dotenv_path):
-        return
-
-    with open(dotenv_path, "r", encoding="utf-8") as env_file:
-        for line in env_file:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip().strip('"\'')
-            if key and key not in os.environ:
-                os.environ[key] = value
-
+    if not os.path.isfile(dotenv_path): return
+    with open(dotenv_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if "=" in line and not line.startswith("#"):
+                k, v = line.strip().split("=", 1)
+                os.environ[k.strip()] = v.strip().strip('"\'')
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-FIREBASE_RTDB_URL = os.environ.get("DATABASE_URL")
-FIREBASE_DATABASE_SECRET = os.environ.get("DATABASE_SECRET")
-
-if not FIREBASE_RTDB_URL:
-    raise RuntimeError("DATABASE_URL must be set in backend/.env")
-
-service_account_path = os.environ.get(
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    "serviceAccountKey.json",
-)
-if not os.path.isabs(service_account_path):
-    service_account_path = os.path.join(
-        os.path.dirname(__file__), service_account_path
-    )
-
-if os.environ.get("SKIP_FIREBASE_INIT") != "1" and not firebase_admin._apps:
-    if not os.path.isfile(service_account_path):
-        raise RuntimeError(
-            f"Firebase service account file not found: {service_account_path}"
-        )
-
-    cred = credentials.Certificate(service_account_path)
-    firebase_admin.initialize_app(cred, {"databaseURL": FIREBASE_RTDB_URL})
-
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def determine_status(heart_rate: float, temperature: float) -> str:
-    """Classify vitals after payload boundary validation has passed."""
-    if temperature > 37.5 or heart_rate > 100 or heart_rate < 60:
-        return "ALERT"
+    if temperature > 37.5 or heart_rate > 100 or heart_rate < 60: return "ALERT"
     return "NORMAL"
 
-
 class VitalsPayload(BaseModel):
-    client_id: int = Field(..., ge=1)
-    user_uid: Optional[str] = None
+    user_uid: str
     heart_rate: float = Field(..., ge=30, le=220)
     temperature: float = Field(..., ge=30, le=45)
-    status_flag: Optional[str] = "NORMAL"
+
+# --- THE AGGREGATION BUFFER ---
+aggregation_buffer = {}
+AGGREGATION_INTERVAL_SECONDS = 60  
 
 @app.post("/api/vitals")
 async def receive_vitals(payload: VitalsPayload):
-    """
-    Endpoint for the ESP32 to push telemetry.
-    The FastAPI backend then validates and forwards to Firebase RTDB.
-    """
+    uid = payload.user_uid
+    hr = payload.heart_rate
+    temp = payload.temperature
+    status = determine_status(hr, temp)
+    now = time.time()
+
     try:
-        # Business Logic / Validation (Boundary Analysis testing point)
-        payload.status_flag = determine_status(
-            payload.heart_rate,
-            payload.temperature,
-        )
+        # 1. LIVE DASHBOARD STREAM
+        supabase.table("profiles").update({
+            "current_hr": hr,
+            "current_temp": temp,
+            "current_status": status,
+            "last_active": datetime.utcnow().isoformat() + "Z"
+        }).eq("id", uid).execute()
 
-        # Format data for Firebase to match the frontend dashboard shape
-        data = {
-            "heartRate": payload.heart_rate,
-            "temperature": payload.temperature,
-            "status": payload.status_flag,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
-        }
-
-        # Choose the database path based on Firebase auth UID if provided.
-        base_path = (
-            f"users/{payload.user_uid}"
-            if payload.user_uid
-            else f"users/{payload.client_id}"
-        )
-        vitals_path = f"{base_path}/vitals"
-        history_path = f"{base_path}/history"
-
-        # Store the latest vitals snapshot.
-        vitals_ref = db.reference(vitals_path)
-        vitals_ref.set(data)
-
-        # Build history entries for charts.
-        timestamp = datetime.utcnow()
-        formatted_date = timestamp.strftime("%Y-%m-%d")
-        formatted_time = timestamp.strftime("%H:%M")
-
-        history_ref = db.reference(history_path)
-        history_snapshot = history_ref.get() or {}
-
-        daily = history_snapshot.get("daily", [])
-        weekly = history_snapshot.get("weekly", [])
-        alerts = history_snapshot.get("alerts", [])
-
-        daily.append({
-            "time": formatted_time,
-            "heartRate": payload.heart_rate,
-            "temp": payload.temperature,
-        })
-
-        if weekly and weekly[-1].get("day") == formatted_date:
-            last_day = weekly[-1]
-            count = last_day.get("count", 1)
-            avg_hr = (last_day.get("avgHR", 0) * count + payload.heart_rate) / (count + 1)
-            avg_temp = (last_day.get("avgTemp", 0) * count + payload.temperature) / (count + 1)
-            last_day["avgHR"] = round(avg_hr, 1)
-            last_day["avgTemp"] = round(avg_temp, 1)
-            last_day["count"] = count + 1
-        else:
-            weekly.append({
-                "day": formatted_date,
-                "avgHR": payload.heart_rate,
-                "avgTemp": payload.temperature,
-                "count": 1,
-            })
-
-        if payload.status_flag == "ALERT":
-            alerts.append({
-                "date": formatted_date,
-                "time": formatted_time,
-                "message": "Most recent vitals triggered an alert.",
-            })
-
-        history_ref.set({
-            "daily": daily,
-            "weekly": weekly,
-            "alerts": alerts,
-        })
-
-        return {
-            "message": "Data logged successfully",
-            "path": vitals_path,
-        }
+        # Initialize buffer for user
+        if uid not in aggregation_buffer:
+            aggregation_buffer[uid] = {"hr": [], "temp": [], "last_save": now, "last_alert": 0}
             
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        buffer = aggregation_buffer[uid]
 
-class TestInjectErrorPayload(BaseModel):
-    client_id: int
-    user_uid: Optional[str] = None
-    scenario: Optional[str] = "alert"
-
-@app.post("/api/test/inject-error")
-async def inject_error(payload: TestInjectErrorPayload):
-    """Simulate a sensor failure or alert to validate frontend ALERT behavior."""
-    try:
-        if payload.scenario == "alert":
-            test_payload = VitalsPayload(
-                client_id=payload.client_id,
-                user_uid=payload.user_uid,
-                heart_rate=120.0,
-                temperature=38.5,
-            )
-        elif payload.scenario == "invalid":
-            test_payload = VitalsPayload(
-                client_id=payload.client_id,
-                user_uid=payload.user_uid,
-                heart_rate=999.0,
-                temperature=999.0,
-            )
+        # 2. THE ALERT OVERRIDE (Exact Timestamps)
+        if status == "ALERT":
+            # Throttle to 1 exact alert log per 60 seconds so we don't spam the DB
+            if now - buffer["last_alert"] >= 60:
+                supabase.table("vitals").insert({
+                    "user_id": uid,
+                    "heart_rate": hr,
+                    "temperature": temp,
+                    "status": "ALERT"
+                }).execute()
+                buffer["last_alert"] = now
+                print(f"*** IMMEDIATE EXACT ALERT SAVED FOR {uid} ***")
         else:
-            raise HTTPException(status_code=400, detail="Unsupported scenario. Use 'alert' or 'invalid'.")
+            # Normal Readings go into the average buffer
+            buffer["hr"].append(hr)
+            buffer["temp"].append(temp)
 
-        result = await receive_vitals(test_payload)
-        return {
-            "message": "Test injection completed.",
-            "scenario": payload.scenario,
-            "result": result,
-        }
+        # 3. STANDARD AGGREGATION (Only for normal readings)
+        if now - buffer["last_save"] >= AGGREGATION_INTERVAL_SECONDS:
+            if len(buffer["hr"]) > 0: # Ensure we actually have normal readings
+                avg_hr = round(sum(buffer["hr"]) / len(buffer["hr"]), 1)
+                avg_temp = round(sum(buffer["temp"]) / len(buffer["temp"]), 1)
+                avg_status = determine_status(avg_hr, avg_temp)
+                
+                supabase.table("vitals").insert({
+                    "user_id": uid,
+                    "heart_rate": avg_hr,
+                    "temperature": avg_temp,
+                    "status": avg_status
+                }).execute()
+                print(f"*** AVERAGED NORMAL DATA SAVED FOR {uid} ***")
+            
+            buffer["hr"].clear()
+            buffer["temp"].clear()
+            buffer["last_save"] = now
+
+        return {"message": "Live data updated"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/health")
-async def health_check():
-    return {"status": "Backend is active"}
-
-# Admin endpoint to backend/main.py
 
 @app.get("/api/admin/all-users-status")
 async def get_all_users_status():
-    """Fetches the latest vitals and status for every user in the system."""
     try:
-        users_ref = db.reference("users")
-        all_users_data = users_ref.get()
-        
-        if not all_users_data:
-            return []
-
+        profiles_res = supabase.table("profiles").select("*").execute()
         summary = []
-        for uid, data in all_users_data.items():
-            vitals = data.get("vitals", {})
+        for p in profiles_res.data:
             summary.append({
-                "uid": uid,
-                "name": data.get("profile", {}).get("name", f"Patient {uid}"), # Falls back if no profile name
-                "heartRate": vitals.get("heartRate", 0),
-                "temperature": vitals.get("temperature", 0),
-                "status": vitals.get("status", "UNKNOWN"),
-                "lastUpdate": vitals.get("timestamp", "N/A")
+                "uid": p["id"],
+                "name": p.get("name", "Unknown"),
+                "heartRate": p.get("current_hr", 0),
+                "temperature": p.get("current_temp", 0),
+                "status": p.get("current_status", "UNKNOWN"),
+                "lastUpdate": p.get("last_active", "N/A")
             })
         return summary
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# Add this inside backend/main.py
-
 @app.get("/api/admin/user/{uid}")
 async def get_single_user_details(uid: str):
-    """Admin endpoint to fetch the complete history and vitals for a specific user."""
     try:
-        user_ref = db.reference(f"users/{uid}")
-        user_data = user_ref.get()
+        profile_res = supabase.table("profiles").select("*").eq("id", uid).execute()
+        name = profile_res.data[0].get("name", "Unknown") if profile_res.data else "Unknown"
         
-        if not user_data:
-            raise HTTPException(status_code=404, detail="User not found")
+        vitals_res = supabase.table("vitals").select("*").eq("user_id", uid).order("created_at", desc=False).execute()
+        
+        daily, alerts = [], []
+        for log in vitals_res.data:
+            # We now send the RAW timestamp string directly to the frontend
+            timestamp = log["created_at"] 
             
-        return user_data
+            daily.append({"timestamp": timestamp, "heartRate": log["heart_rate"], "temp": log["temperature"]})
+            if log["status"] == "ALERT":
+                alerts.append({"timestamp": timestamp, "message": f"Critical Incident: HR {log['heart_rate']}, Temp {log['temperature']}"})
+
+        return {"uid": uid, "name": name, "history": {"daily": daily, "weekly": [], "alerts": alerts}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-# Admin endpoint to backend/main.py
-
-@app.get("/api/admin/all-users-status")
-async def get_all_users_status():
-    """Fetches the latest vitals and status for every user in the system."""
-    try:
-        users_ref = db.reference("users")
-        all_users_data = users_ref.get()
-        
-        if not all_users_data:
-            return []
-
-        summary = []
-        for uid, data in all_users_data.items():
-            vitals = data.get("vitals", {})
-            summary.append({
-                "uid": uid,
-                "name": data.get("profile", {}).get("name", f"Patient {uid}"), # Falls back if no profile name
-                "heartRate": vitals.get("heartRate", 0),
-                "temperature": vitals.get("temperature", 0),
-                "status": vitals.get("status", "UNKNOWN"),
-                "lastUpdate": vitals.get("timestamp", "N/A")
-            })
-        return summary
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
