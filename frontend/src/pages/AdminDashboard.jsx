@@ -5,9 +5,11 @@ import { supabase } from '../supabaseClient';
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
+    console.error('Missing Supabase session - user may not be logged in');
     throw new Error('Missing Supabase session');
   }
 
+  console.log('Token found:', session.access_token.substring(0, 20) + '...');
   return {
     Authorization: `Bearer ${session.access_token}`,
   };
@@ -38,17 +40,22 @@ function AdminDashboard({ onLogout, onBack }) {
 
   const handleViewReport = async (uid, name) => {
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(
         `http://localhost:8000/api/admin/user/${uid}`,
-        { headers: await getAuthHeaders() }
+        { headers }
       );
-      if (!response.ok) throw new Error(`Patient report failed: ${response.status}`);
       const data = await response.json();
+      if (!response.ok) {
+        console.error(`API error (${response.status}):`, data);
+        throw new Error(`Patient report failed: ${response.status} - ${data.detail}`);
+      }
       setSelectedPatient({
         uid, name, history: data.history || { daily: [], weekly: [], alerts: [] }
       });
     } catch (err) {
-      alert("Failed to load patient data.");
+      console.error("Full error:", err);
+      alert(`Failed to load patient data: ${err.message}`);
     }
   };
 

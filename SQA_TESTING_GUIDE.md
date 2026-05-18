@@ -1,153 +1,197 @@
-# SQA Testing Guide
+# SQA Testing Guide: Smart IoT Health Monitoring System
 
 ## Purpose
 
-This guide explains how the backend tests prove the current Supabase architecture works correctly. The tests are designed for SQA evidence: they verify validation, data integrity, downsampling, immediate alert logging, and API discoverability without writing to the live Supabase database.
+This guide explains how the updated backend tests prove that the new least-privilege, zero-trust Supabase architecture works correctly. These tests verify validation constraints, data integrity rules, role-based security, and edge-token gateway verification without executing live, destructive queries against your production Supabase tables.
 
-## API Documentation URL
+---
 
-FastAPI automatically exposes interactive API documentation at:
+# API Documentation Portal
+
+FastAPI automatically generates interactive Swagger API documentation at:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-This is not a frontend page. It is a developer and examiner tool generated from `backend/main.py`.
+This serves as an invaluable tool for developers and examiners to inspect:
 
-It shows:
+* Unified endpoints and parameter schemas.
+* Pydantic-enforced boundary validation constraints.
+* Header requirements (including the new `X-Device-Token` gateway security field).
+* Live sandbox requests via the "Try it out" feature.
 
-- All available backend routes.
-- Required request JSON schemas.
-- Validation rules from Pydantic.
-- Response examples.
-- A `Try it out` button for manual API testing.
+---
 
-Important routes:
+# How To Run Automated Tests
 
-- `GET /` - confirms backend is running and links to useful routes.
-- `GET /api/health` - simple backend health check.
-- `POST /api/vitals` - receives ESP32 or mock sensor vitals.
-- `GET /api/admin/all-users-status` - returns current patient status summaries for the admin dashboard.
-- `GET /api/admin/user/{uid}` - returns one patient's profile and historical vitals for charts and PDF reports.
+To run the test suite, navigate to your backend directory, activate your python virtual environment, and run the pytest runner.
 
-## How To Run Automated Tests
-
-From the backend folder:
+## Using PowerShell (Windows)
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\Activate.ps1
+python -m pytest -v
 ```
 
-In Git Bash:
+---
+
+## Using Git Bash / macOS / Linux
 
 ```bash
 cd backend
 source .venv/Scripts/activate
-python -m pytest
+python -m pytest -v
 ```
 
-## Why Tests Do Not Touch Supabase
+---
 
-The tests set:
+## Using Windows Command Prompt (CMD)
+
+```cmd
+cd backend
+.venv\Scripts\activate.bat
+python -m pytest -v
+```
+
+---
+
+# Why Tests Do Not Touch Supabase (Mock Isolation)
+
+The test configuration injects:
 
 ```python
 os.environ["SKIP_SUPABASE_INIT"] = "1"
 ```
 
-This prevents the real Supabase client from connecting during test import. The tests replace `main.supabase` with a fake in-memory client. This makes the test run safe, fast, and repeatable.
+This intercepts active network handshakes to Supabase on import. The test suite dynamically overrides `main.supabase_client` with an in-memory `FakeSupabase` instance. This guarantees that test runs are:
 
-## What The Tests Prove
+* Isolated: Completely safe to run without database pollution.
+* Fast & Deterministic: No latency or offline API failures.
+* Repeatable: Restarts with an empty simulated state database every run.
 
-### 1. Boundary Validation
+---
 
-The tests send invalid heart rates such as `-1` and `500` to `/api/vitals`.
+# What the Tests Prove (SQA Verification Metrics)
 
-Expected result:
+## 1. Edge Ingestion Security (`X-Device-Token` Gate)
+
+### The Test
+
+Attempts to post vitals without the `X-Device-Token` header, or with an invalid token.
+
+### Expected Result
 
 ```text
-HTTP 422
+401 Unauthorized
 ```
 
-SQA meaning: impossible clinical data is rejected before it reaches Supabase.
+### SQA Value
 
-### 2. Clinical Status Classification
+Proves unauthorized external clients cannot inject random telemetry or pollute patient histories.
 
-The tests verify:
+---
 
-- Normal vitals return `NORMAL`.
-- Heart rate above `100` returns `ALERT`.
-- Heart rate below `60` returns `ALERT`.
-- Temperature above `37.5` returns `ALERT`.
+## 2. Physical Data Boundaries (Pydantic Filtering)
 
-SQA meaning: clinical boundary logic is deterministic and testable.
+### The Test
 
-### 3. Live Dashboard Updates
+Sends impossible boundaries such as a negative heart rate (`-1`) or extreme values (`500`).
 
-Normal readings update the `profiles` table fields:
+### Expected Result
 
-- `current_hr`
-- `current_temp`
-- `current_status`
-- `last_active`
-
-SQA meaning: the live dashboard receives current telemetry without waiting for historical aggregation.
-
-### 4. Aggregation And Downsampling
-
-Normal readings are held in `aggregation_buffer`. After the configured interval, the backend writes one averaged row into `vitals`.
-
-SQA meaning: the system avoids database bloat while preserving useful historical trends.
-
-### 5. High-Priority Alert Override
-
-Alert readings bypass the aggregation buffer and immediately write an exact reading into the `vitals` table.
-
-SQA meaning: emergency events are not delayed by optimization logic.
-
-### 6. Alert Throttling
-
-Repeated alerts inside 60 seconds are throttled to avoid spamming the database.
-
-SQA meaning: the system balances emergency logging with operational stability.
-
-## Manual End-To-End Test
-
-1. Start backend:
-
-```powershell
-cd backend
-.\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```text
+422 Unprocessable Entity
 ```
 
-2. Open:
+validation error.
+
+### SQA Value
+
+Ensures corrupt hardware signals or malicious payload injections are safely rejected at the API edge.
+
+---
+
+## 3. Least-Privilege Database Mutations (`returning="minimal"`)
+
+### The Test
+
+Verifies successful ingestion calls use the `.insert(db_data, returning="minimal")` instruction.
+
+### Expected Result
+
+Write succeeds securely under public anonymous permissions.
+
+### SQA Value
+
+Verifies that write operations do not attempt to read back database rows, successfully bypassing the classic Supabase `42501` Row-Level Security violation.
+
+---
+
+## 4. Admin Roster Access Controls (RBAC Verification)
+
+### The Test
+
+Attempts to fetch patient list summaries from `/api/admin/all-users-status` without an authorization token.
+
+### Expected Result
+
+```text
+401 Unauthorized
+```
+
+response.
+
+### SQA Value
+
+Proves patient administrative dashboards are structurally sealed from the public internet.
+
+---
+
+# Manual End-to-End Handshake Verification
+
+To manually trace a secure telemetry write:
+
+## Ensure your backend server is active
+
+```bash
+python -m uvicorn main:app --reload
+```
+
+---
+
+## Navigate to your browser sandbox
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-3. Use `POST /api/vitals` with:
+---
+
+## Select `POST /api/vitals`
+
+Click `"Try it out"`, insert your secure token into the header input field:
+
+```text
+Header name: X-Device-Token
+Value: THE DEVICE TOKEN YOU SET 
+```
+
+---
+
+## Provide a test JSON payload matching a valid patient UUID
 
 ```json
 {
-  "user_uid": "your-supabase-user-id",
-  "heart_rate": 78,
+  "user_uid": "YOUR UID HERE",
+  "heart_rate": 78.0,
   "temperature": 36.8
 }
 ```
 
-4. Confirm the user's `profiles` row updates.
+---
 
-5. Send alert data:
+## Execute the Request
 
-```json
-{
-  "user_uid": "your-supabase-user-id",
-  "heart_rate": 130,
-  "temperature": 38.5
-}
-```
-
-6. Confirm an `ALERT` row appears in the `vitals` table immediately.
-
-7. Start frontend and verify the dashboard and reports show the same data.
+Click Execute and verify a `200 OK` return code showing your ingestion was accepted and written securely!
