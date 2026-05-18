@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import ReportsUI from '../components/Reports';
+import { supabase } from '../supabaseClient';
+
+async function getAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    throw new Error('Missing Supabase session');
+  }
+
+  return {
+    Authorization: `Bearer ${session.access_token}`,
+  };
+}
 
 function AdminDashboard({ onLogout, onBack }) {
   const [patients, setPatients] = useState([]);
@@ -9,7 +21,11 @@ function AdminDashboard({ onLogout, onBack }) {
     const fetchPatients = async () => {
       if (selectedPatient) return;
       try {
-        const response = await fetch('http://localhost:8000/api/admin/all-users-status');
+        const response = await fetch(
+          'http://localhost:8000/api/admin/all-users-status',
+          { headers: await getAuthHeaders() }
+        );
+        if (!response.ok) throw new Error(`Admin roster failed: ${response.status}`);
         const data = await response.json();
         setPatients(data);
       } catch (err) { console.error(err); }
@@ -22,7 +38,11 @@ function AdminDashboard({ onLogout, onBack }) {
 
   const handleViewReport = async (uid, name) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/user/${uid}`);
+      const response = await fetch(
+        `http://localhost:8000/api/admin/user/${uid}`,
+        { headers: await getAuthHeaders() }
+      );
+      if (!response.ok) throw new Error(`Patient report failed: ${response.status}`);
       const data = await response.json();
       setSelectedPatient({
         uid, name, history: data.history || { daily: [], weekly: [], alerts: [] }

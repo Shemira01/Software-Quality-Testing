@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -6,6 +6,7 @@ import os
 import time
 
 from supabase import create_client, Client
+from supabase.lib.client_options import ClientOptions
 
 app = FastAPI(title="Smart IoT Health Monitoring API (Precise Alerts)")
 
@@ -28,8 +29,97 @@ def load_dotenv(dotenv_path: str) -> None:
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+SUPABASE_KEY = (
+    os.environ.get("SUPABASE_KEY")
+    or os.environ.get("SUPABASE_PUBLISHABLE_KEY")
+    or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+)
+
+if os.environ.get("SKIP_SUPABASE_INIT") == "1":
+    supabase = None
+else:
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise RuntimeError(
+            "Missing Supabase configuration. Set SUPABASE_URL and SUPABASE_KEY "
+            "in backend/.env. SUPABASE_PUBLISHABLE_KEY or SUPABASE_SERVICE_ROLE_KEY "
+            "are also accepted."
+        )
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def create_user_scoped_client(access_token: str) -> Client:
+    """Create a Supabase client that uses the caller's JWT so RLS applies."""
+    return create_client(
+        SUPABASE_URL,
+        SUPABASE_KEY,
+        options=ClientOptions(
+            headers={"Authorization": f"Bearer {access_token}"},
+            persist_session=False,
+            auto_refresh_token=False,
+        ),
+    )
+
+
+async def get_current_user_context(authorization: str = Header(default="")):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+
+    access_token = authorization.removeprefix("Bearer ").strip()
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+
+    try:
+        auth_response = supabase.auth.get_user(access_token)
+        user = auth_response.user
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid bearer token")
+
+        user_client = create_user_scoped_client(access_token)
+        profile_response = (
+            user_client
+            .table("profiles")
+            .select("id, role")
+            .eq("id", user.id)
+            .execute()
+        )
+        profile = profile_response.data[0] if profile_response.data else {}
+
+        return {
+            "user_id": user.id,
+            "role": profile.get("role", "patient"),
+            "client": user_client,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired bearer token") from exc
+
+
+async def require_admin(context=Depends(get_current_user_context)):
+    if context["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    return context
+
+
+async def require_admin_or_self(uid: str, context=Depends(get_current_user_context)):
+    if context["role"] != "admin" and context["user_id"] != uid:
+        raise HTTPException(status_code=403, detail="Not authorized for this patient")
+    return context
+
+
+@app.get("/")
+async def root():
+    return {
+        "status": "Backend is running",
+        "health_check": "/api/health",
+        "interactive_api_docs": "/docs",
+        "vitals_endpoint": "/api/vitals",
+    }
+
+
+@app.get("/api/health")
+async def health_check():
+    return {"status": "Backend is active"}
 
 def determine_status(heart_rate: float, temperature: float) -> str:
     if temperature > 37.5 or heart_rate > 100 or heart_rate < 60: return "ALERT"
@@ -108,9 +198,10 @@ async def receive_vitals(payload: VitalsPayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/admin/all-users-status")
-async def get_all_users_status():
+async def get_all_users_status(context=Depends(require_admin)):
     try:
-        profiles_res = supabase.table("profiles").select("*").execute()
+        scoped_client = context["client"]
+        profiles_res = scoped_client.table("profiles").select("*").execute()
         summary = []
         for p in profiles_res.data:
             summary.append({
@@ -126,12 +217,20 @@ async def get_all_users_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/admin/user/{uid}")
-async def get_single_user_details(uid: str):
+async def get_single_user_details(uid: str, context=Depends(require_admin_or_self)):
     try:
-        profile_res = supabase.table("profiles").select("*").eq("id", uid).execute()
+        scoped_client = context["client"]
+        profile_res = scoped_client.table("profiles").select("*").eq("id", uid).execute()
         name = profile_res.data[0].get("name", "Unknown") if profile_res.data else "Unknown"
         
-        vitals_res = supabase.table("vitals").select("*").eq("user_id", uid).order("created_at", desc=False).execute()
+        vitals_res = (
+            scoped_client
+            .table("vitals")
+            .select("*")
+            .eq("user_id", uid)
+            .order("created_at", desc=False)
+            .execute()
+        )
         
         daily, alerts = [], []
         for log in vitals_res.data:

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReportsUI from '../components/Reports';
+import { supabase } from '../supabaseClient';
 
 function ReportsPage({ userId, userName }) {
   const [dailyData, setDailyData] = useState([]);
@@ -11,7 +12,13 @@ function ReportsPage({ userId, userName }) {
 
     const fetchHistory = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/admin/user/${userId}`);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+
+        const response = await fetch(
+          `http://localhost:8000/api/admin/user/${userId}`,
+          { headers: { Authorization: `Bearer ${session.access_token}` } }
+        );
         if (response.ok) {
           const data = await response.json();
           if (data.history) {
