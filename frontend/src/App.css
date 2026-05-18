@@ -588,8 +588,34 @@ h2 {
   padding-bottom: 20px;
 }
 
+/* --- PREMIUM PDF EXPORT BUTTON --- */
+.pdf-button {
+  background: linear-gradient(135deg, #3498db, #2980b9);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.5px;
+}
+
+.pdf-button:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(52, 152, 219, 0.4);
+  background: linear-gradient(135deg, #2980b9, #1f618d);
+}
+
 .pdf-button:disabled {
-  background: #95a5a6;
+  background: #bdc3c7;
+  color: #ecf0f1;
+  box-shadow: none;
   cursor: not-allowed;
   transform: none;
 }

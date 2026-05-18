@@ -4,12 +4,14 @@ import ReportsPage from './Reports';
 import { supabase } from '../supabaseClient';
 import '../App.css';
 
-function DashboardPage({ onLogout }) {
+// We added the 'onOpenAdmin' prop here
+function DashboardPage({ onLogout, onOpenAdmin }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [vitals, setVitals] = useState({ heartRate: 0, temperature: 0, status: 'UNKNOWN' });
-  const [profile, setProfile] = useState({ name: 'Patient' });
   
-  // Navigation State with LocalStorage memory
+  // We added 'role' to the profile state
+  const [profile, setProfile] = useState({ name: 'Patient', role: 'patient' });
+  
   const [activeTab, setActiveTab] = useState(localStorage.getItem('dashboardTab') || 'dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -43,7 +45,8 @@ function DashboardPage({ onLogout }) {
           .single();
         
         if (profileData) {
-          setProfile({ name: profileData.name });
+          // We now save their role into the React state
+          setProfile({ name: profileData.name, role: profileData.role });
           setVitals({
             heartRate: profileData.current_hr || 0,
             temperature: profileData.current_temp || 0,
@@ -100,6 +103,24 @@ function DashboardPage({ onLogout }) {
           >
             My Reports
           </button>
+
+          {/* --- THE ROLE-BASED ACCESS CONTROL (RBAC) CHECK --- */}
+          {/* This button ONLY renders if the database says this user is an admin */}
+          {profile.role === 'admin' && (
+            <button 
+              onClick={onOpenAdmin}
+              style={{
+                marginTop: '30px', 
+                background: '#2c3e50', 
+                color: '#f1c40f', 
+                fontWeight: 'bold',
+                border: '1px solid #f1c40f'
+              }}
+            >
+              🛡️ Admin Dashboard
+            </button>
+          )}
+
         </div>
         <button className="delete-acc-btn" onClick={handleLogout} style={{marginTop: 'auto'}}>
           Logout

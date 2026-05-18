@@ -39,13 +39,12 @@ function App() {
       {view === 'login' && <LoginForm onNavigate={handleSetView} />}
       {view === 'signup' && <SignupForm onNavigate={handleSetView} />}
       
+      {/* Notice how we completely removed the <div className="admin-gateway"> here! */}
       {view === 'dashboard' && (
-        <>
-          <div className="admin-gateway">
-            <button onClick={() => handleSetView('admin')}>🛡️ Open Admin Panel</button>
-          </div>
-          <DashboardPage onLogout={() => handleSetView('login')} />
-        </>
+        <DashboardPage 
+          onLogout={() => handleSetView('login')} 
+          onOpenAdmin={() => handleSetView('admin')} 
+        />
       )}
 
       {view === 'admin' && (
