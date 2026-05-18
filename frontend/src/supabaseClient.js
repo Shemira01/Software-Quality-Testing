@@ -1,6 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://uwwselyssxokwzxfhzjw.supabase.co';
-const supabaseAnonKey = 'sb_publishable__VKbdl-fPM5GBbYlNBWRwg_1YoXm22f';
+// Vite uses import.meta.env to access environment variables
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables:', {
+    url: supabaseUrl ? '✓' : '✗ VITE_SUPABASE_URL missing',
+    key: supabaseAnonKey ? '✓' : '✗ VITE_SUPABASE_ANON_KEY missing'
+  });
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

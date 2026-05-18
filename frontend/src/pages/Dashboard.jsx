@@ -21,6 +21,7 @@ function DashboardPage({ onLogout, onOpenAdmin }) {
     setIsSidebarOpen(false);
   };
 
+  // Listen for secure authentication state changes
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setCurrentUser(session?.user ?? null);
@@ -33,31 +34,57 @@ function DashboardPage({ onLogout, onOpenAdmin }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Core Real-Time Synchronizer Hook
   useEffect(() => {
     if (!currentUser) return;
 
     const fetchLiveData = async () => {
       try {
-        const { data: profileData } = await supabase
+        // 1. SAFE PROFILE FETCH: Replaced .single() to eliminate the 406 Not Acceptable crash
+        const { data: profileRows, error: profileError } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', currentUser.id)
-          .single();
+          .eq('id', currentUser.id);
         
-        if (profileData) {
-          // We now save their role into the React state
-          setProfile({ name: profileData.name, role: profileData.role });
+        if (!profileError && profileRows && profileRows.length > 0) {
+          const profileData = profileRows[0];
+          setProfile({ 
+            name: profileData.name || 'Patient', 
+            role: profileData.role || 'patient' 
+          });
+        } else {
+          // Robust fallback template if user profile metadata is empty
+          setProfile({ name: 'Patient Account', role: 'patient' });
+          console.warn("Profile metadata entry not found for auth ID:", currentUser.id);
+        }
+
+        // 2. LIVE TELEMETRY INGESTION READING: Pulling from the vitals table
+        const { data: vitalsData, error: vitalsError } = await supabase
+          .from('vitals')
+          .select('heart_rate, temperature, status')
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        // Debug diagnostic log so you can track database state right in your inspect console
+        console.log("CURRENT AUTH USER ID:", currentUser.id, "RECEIVED VITALS ARRAY:", vitalsData);
+
+        if (!vitalsError && vitalsData && vitalsData.length > 0) {
+          const latest = vitalsData[0]; // Extract the latest row object from the array wrapper
+          
+          // Map database snake_case keys cleanly into UI expected state fields
           setVitals({
-            heartRate: profileData.current_hr || 0,
-            temperature: profileData.current_temp || 0,
-            status: profileData.current_status || 'UNKNOWN'
+            heartRate: latest.heart_rate || 0,
+            temperature: latest.temperature || 0,
+            status: latest.status || 'NORMAL'
           });
         }
       } catch (err) {
-        console.error("Error fetching dashboard data:", err);
+        console.error("Error executing background dashboard refresh sync:", err);
       }
     };
 
+    // Execute immediately on loading context, then schedule the intervals
     fetchLiveData();
     const interval = setInterval(fetchLiveData, 2000); 
     return () => clearInterval(interval);
