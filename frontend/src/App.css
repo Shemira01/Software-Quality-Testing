@@ -768,3 +768,119 @@ h2 {
 .back-btn-modern:hover, .logout-btn-modern:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+/* =========================================
+   PREMIUM ADMIN DASHBOARD STYLES
+   ========================================= */
+
+/* Main Roster View */
+.admin-roster-container {
+  padding: 30px;
+  max-width: 1400px;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: #f4f7f6;
+}
+
+.admin-roster-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #2c3e50;
+  padding: 20px 30px;
+  border-radius: 16px;
+  margin-bottom: 40px;
+  color: white;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.header-left-group, .header-right-group {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-title { margin: 0; font-size: 1.6rem; }
+.header-subtitle { margin: 5px 0 0 0; font-size: 0.95rem; color: #bdc3c7; }
+
+/* The Global Roster PDF Button */
+.export-roster-btn {
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+  transition: all 0.3s ease;
+  font-size: 0.95rem;
+}
+.export-roster-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(46, 204, 113, 0.5);
+}
+
+/* --- Individual Clinical Detailed View --- */
+.admin-detailed-view-container {
+  padding: 30px;
+  max-width: 1200px;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: #f4f7f6;
+}
+
+.admin-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  padding: 20px 30px;
+  border-radius: 16px;
+  margin-bottom: 30px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  border: 1px solid #e0e6ed;
+}
+
+.detail-header-info {
+  text-align: center;
+}
+.detail-header-info h2 { margin: 0; color: #2c3e50; font-size: 1.5rem; }
+.detail-header-info h2 span { color: #3498db; }
+.detail-header-info p { margin: 5px 0 0 0; color: #7f8c8d; font-size: 0.95rem; }
+
+/* A sleek white wrapper around the Reports component */
+.admin-reports-wrapper {
+  background: white;
+  border-radius: 16px;
+  padding: 40px 30px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.04);
+  border: 1px solid #e0e6ed;
+}
+
+/* Modern Navigation Buttons */
+.back-btn-modern {
+  background: #34495e;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s;
+  font-size: 0.95rem;
+}
+.back-btn-modern:hover { background: #2c3e50; }
+
+.logout-btn-modern {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s;
+  font-size: 0.95rem;
+}
+.logout-btn-modern:hover { background: #c0392b; }

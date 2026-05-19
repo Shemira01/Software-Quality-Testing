@@ -5,7 +5,7 @@ import random
 API_URL = "http://127.0.0.1:8000/api/vitals"
 
 # Patient UUID mapping
-SHEM_UUID = "d0771902-9ce3-4533-9902-a6e538ce0ae5" 
+SHEM_UUID = "a2dbc06a-08f0-4dd7-98ee-87c66904d454" 
 
 # Secure Device Token (must match the token in backend/.env)
 DEVICE_SECRET_TOKEN = "device_secure_token_juja_2026"

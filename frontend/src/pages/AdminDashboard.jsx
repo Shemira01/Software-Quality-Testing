@@ -1,116 +1,207 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
-
-function PatientReport({ patient, onBack, onHome }) {
-  const [vitals, setVitals] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    supabase.from('vitals').select('*').eq('user_id', patient.id)
-      .order('created_at', { ascending: false }).limit(20)
-      .then(({ data }) => { setVitals(data || []); setLoading(false); });
-  }, [patient.id]);
-
-  return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <button onClick={onBack} style={styles.navLink}>← Back to Roster</button>
-        <button onClick={onHome} style={styles.homeBtn}>Home</button>
-      </div>
-      
-      <div style={styles.reportCard}>
-        <h2 style={styles.title}>{patient.name}</h2>
-        <p style={{ color: '#6b7280', fontSize: '1.1rem' }}>Clinical Telemetry Records</p>
-        
-        <table style={styles.table}>
-          <thead>
-            <tr style={styles.tr}>
-              <th style={styles.th}>Timestamp</th>
-              <th style={styles.th}>Heart Rate</th>
-              <th style={styles.th}>Temperature</th>
-            </tr>
-          </thead>
-          <tbody>
-            {vitals.map((v, i) => (
-              <tr key={i} style={styles.tr}>
-                <td style={styles.td}>{new Date(v.created_at).toLocaleString()}</td>
-                <td style={{ ...styles.td, fontWeight: '700', color: '#2563eb' }}>{v.heart_rate} BPM</td>
-                <td style={{ ...styles.td, fontWeight: '700', color: '#059669' }}>{v.temperature}°C</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+import ReportsUI from '../components/Reports';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { supabase } from '../supabaseClient'; // Secure frontend client!
 
 function AdminDashboard({ onLogout, onBack }) {
   const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
 
+  // 1. SECURE FETCH: Get live statuses for all users using the frontend Admin Session
   useEffect(() => {
-    supabase.from('vitals').select(`user_id, profiles (name)`)
-      .then(({ data }) => {
-        if (!data) return;
-        const unique = [...new Map(data.map(item => {
-          const profile = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
-          return [item.user_id, { id: item.user_id, name: profile?.name || "Unnamed Patient" }];
-        })).values()];
-        setPatients(unique);
-      });
-  }, []);
+    const fetchPatients = async () => {
+      if (selectedPatient) return;
+      try {
+        const { data, error } = await supabase.from('profiles').select('*');
+        if (error) throw error;
 
+        const formattedPatients = data.map(p => ({
+          uid: p.id,
+          name: p.name || "Unknown Patient",
+          heartRate: p.current_hr || 0,
+          temperature: p.current_temp || 0,
+          status: p.current_status || 'UNKNOWN',
+          lastUpdate: p.last_active || 'N/A'
+        }));
+        
+        setPatients(formattedPatients);
+      } catch (err) { 
+        console.error("Error fetching patients:", err.message); 
+      }
+    };
+    
+    fetchPatients();
+    const timer = setInterval(fetchPatients, 5000);
+    return () => clearInterval(timer);
+  }, [selectedPatient]);
+
+  // 2. SECURE FETCH: Get deep history for a specific user using frontend Admin Session
+  const handleViewReport = async (uid, name) => {
+    setIsLoadingReport(true);
+    try {
+      const { data: vitalsData, error } = await supabase
+        .from('vitals')
+        .select('*')
+        .eq('user_id', uid)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const daily = [];
+      const alerts = [];
+      
+      if (vitalsData) {
+        vitalsData.forEach(log => {
+          daily.push({ 
+            timestamp: log.created_at, 
+            heartRate: log.heart_rate, 
+            temp: log.temperature 
+          });
+          if (log.status === 'ALERT') {
+            alerts.push({ 
+              timestamp: log.created_at, 
+              message: `Critical Incident: HR ${log.heart_rate}, Temp ${log.temperature}` 
+            });
+          }
+        });
+      }
+
+      setSelectedPatient({
+        uid, name, history: { daily, weekly: [], alerts }
+      });
+    } catch (err) {
+      alert("Failed to load patient data.");
+      console.error(err);
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  // 3. Export the entire Admin Roster as a PDF
+  const downloadRosterPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(22);
+    doc.setTextColor(44, 62, 80);
+    doc.text("Global Patient Roster Report", 14, 20);
+    
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+    doc.line(14, 36, 196, 36);
+
+    const tableData = patients.map(p => [
+      p.name, 
+      `${p.heartRate} BPM`, 
+      `${p.temperature} °C`, 
+      p.status,
+      p.lastUpdate !== 'N/A' ? new Date(p.lastUpdate).toLocaleTimeString() : 'N/A'
+    ]);
+
+    autoTable(doc, {
+      startY: 45,
+      head: [['Patient Name', 'Heart Rate', 'Temperature', 'Status', 'Last Sync']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [44, 62, 80] },
+      didParseCell: function(data) {
+        if (data.section === 'body' && data.column.index === 3) {
+          if (data.cell.raw === 'ALERT') {
+            data.cell.styles.textColor = [231, 76, 60];
+            data.cell.styles.fontStyle = 'bold';
+          } else {
+            data.cell.styles.textColor = [39, 174, 96];
+          }
+        }
+      }
+    });
+
+    doc.save("Admin_Global_Roster.pdf");
+  };
+
+  // --- VIEW A: INDIVIDUAL PATIENT REPORTS PAGE ---
   if (selectedPatient) {
+    const history = selectedPatient.history;
     return (
-      <PatientReport 
-        patient={selectedPatient} 
-        onBack={() => setSelectedPatient(null)} 
-        onHome={onBack} 
-      />
+      <div className="admin-detailed-view-container">
+        <nav className="admin-detail-header">
+          <button onClick={() => setSelectedPatient(null)} className="back-btn-modern">← Back to Roster</button>
+          <div className="detail-header-info">
+            <h2>Clinical View: <span>{selectedPatient.name}</span></h2>
+            <p>Full Historical Analytics & PDF Export</p>
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={onBack} className="back-btn-modern" style={{background: 'white', color: '#34495e', border: '1px solid #34495e'}}>Home</button>
+            <button onClick={onLogout} className="logout-btn-modern">Logout</button>
+          </div>
+        </nav>
+        
+        <div className="admin-reports-wrapper">
+          <ReportsUI 
+            name={selectedPatient.name}
+            dailyData={history.daily || []} 
+            weeklyData={history.weekly || []} 
+            alerts={history.alerts || []} 
+          />
+        </div>
+      </div>
     );
   }
 
+  // --- VIEW B: MAIN ADMIN DASHBOARD ---
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>Admin Portal</h1>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={onBack} style={styles.homeBtn}>Home</button>
-          <button onClick={onLogout} style={styles.logoutBtn}>Sign Out</button>
+    <div className="admin-roster-container">
+      <nav className="admin-roster-header">
+        <div className="header-left-group">
+          <button onClick={onBack} className="back-btn-modern">← Home</button>
+          <div>
+            <h2 className="header-title">Admin Control Center</h2>
+            <p className="header-subtitle">Live Global Patient Monitoring</p>
+          </div>
         </div>
-      </div>
+        <div className="header-right-group">
+           <button onClick={downloadRosterPDF} className="export-roster-btn">
+             📥 Download Global Roster PDF
+           </button>
+           <button onClick={onLogout} className="logout-btn-modern">Logout</button>
+        </div>
+      </nav>
 
-      <div style={styles.grid}>
-        {patients.map(p => (
-          <div key={p.id} style={styles.card}>
-            <div style={styles.avatar}>{p.name.charAt(0).toUpperCase()}</div>
-            <h3 style={styles.cardName}>{p.name}</h3>
-            <button onClick={() => setSelectedPatient(p)} style={styles.viewBtn}>View Telemetry</button>
+      <div className="modern-patient-grid">
+        {patients.map((p) => (
+          <div key={p.uid} className={`modern-patient-card ${p.status === 'ALERT' ? 'card-alert' : ''}`}>
+            <div className="card-header">
+              <h3>{p.name}</h3>
+              <span className={`status-pill ${p.status.toLowerCase()}`}>{p.status}</span>
+            </div>
+            
+            <div className="card-vitals">
+              <div className="vital-box">
+                <span className="v-label">Heart Rate</span>
+                <span className="v-value">{p.heartRate} <small>BPM</small></span>
+              </div>
+              <div className="vital-box">
+                <span className="v-label">Temperature</span>
+                <span className="v-value">{p.temperature} <small>°C</small></span>
+              </div>
+            </div>
+
+            <div className="card-footer">
+              <span className="sync-time">⏱ {p.lastUpdate !== 'N/A' ? new Date(p.lastUpdate).toLocaleTimeString() : 'N/A'}</span>
+              <button 
+                className="view-report-btn" 
+                onClick={() => handleViewReport(p.uid, p.name)}
+                disabled={isLoadingReport}
+              >
+                {isLoadingReport ? 'Loading...' : 'Open Reports →'}
+              </button>
+            </div>
           </div>
         ))}
       </div>
     </div>
   );
 }
-
-const styles = {
-  container: { padding: '40px', fontFamily: "'Inter', sans-serif", backgroundColor: '#f3f4f6', minHeight: '100vh' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' },
-  title: { fontSize: '2.5rem', color: '#111827', margin: 0, fontWeight: '800' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '25px' },
-  card: { backgroundColor: 'white', padding: '30px', borderRadius: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', textAlign: 'center', border: '1px solid #e5e7eb' },
-  avatar: { width: '70px', height: '70px', borderRadius: '20px', backgroundColor: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '30px', fontWeight: 'bold', margin: '0 auto 20px' },
-  cardName: { fontSize: '1.4rem', marginBottom: '20px', color: '#1f2937' },
-  viewBtn: { width: '100%', padding: '14px', backgroundColor: '#4338ca', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', fontSize: '1rem' },
-  logoutBtn: { padding: '12px 24px', backgroundColor: '#fef2f2', color: '#b91c1c', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' },
-  homeBtn: { padding: '12px 24px', backgroundColor: '#ffffff', color: '#374151', border: '1px solid #d1d5db', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' },
-  navLink: { background: 'none', border: 'none', color: '#4338ca', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', textDecoration: 'underline' },
-  reportCard: { backgroundColor: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #e5e7eb' },
-  table: { width: '100%', borderCollapse: 'separate', borderSpacing: '0', marginTop: '30px' },
-  th: { textAlign: 'left', padding: '18px', backgroundColor: '#f9fafb', borderBottom: '2px solid #e5e7eb', color: '#6b7280', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' },
-  td: { padding: '18px', borderBottom: '1px solid #f3f4f6', color: '#374151', fontSize: '1rem' },
-  tr: { transition: 'background-color 0.2s' }
-};
 
 export default AdminDashboard;
